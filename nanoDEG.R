@@ -1,135 +1,32 @@
-library(dplyr)
-library(tidyr)
-library(tibble)
-library(NACHO)
-
-
-excel <- load_rcc(data_directory = "C:/Export/Betsy/TDN/20201120_208802640621_RCC", ssheet_csv = "sample_sheet.csv", id_colname = "File",housekeeping_genes = "ABCF1,G6PD,NRDE2,OAZ1,POLR2A,SDHA,STK11IP,TBC1D10B,TBP,UBB", housekeeping_predict = FALSE,housekeeping_norm = TRUE, normalisation_method = "GEO",n_comp = 10)
-
-expr_counts <- excel[["nacho"]] %>% 
-  filter(grepl("Endogenous", CodeClass)) %>% 
-  select(File, Name, Count_Norm) %>% 
-  pivot_wider(names_from = "Name", values_from = "Count_Norm") %>% 
-  column_to_rownames("File") %>% 
-  t()
-
-get_counts <- function(
-  nacho, 
-  codeclass = "Endogenous", 
-  rownames = "IDFILE", 
-  colnames = c("Name", "Accession")
-) {
-  nacho[["nacho"]] %>% 
-    dplyr::filter(grepl(codeclass, .data[["CodeClass"]])) %>% 
-    dplyr::select(c("IDFILE", "Name", "Count_Norm")) %>% 
-    tidyr::pivot_wider(names_from = colnames[1], values_from = "Count_Norm") %>%
-    tibble::column_to_rownames(rownames) %>% 
-    t()
-}
-
-
-##---------------------------------------------------------------------------------------------###
-
-library(vsn)
-library(NanoStringNorm)
-
-tdn <- read.table("C:/Export/Betsy/TDN2.csv", header=TRUE, sep=",")
-
-
-tdn_norm <- NanoStringNorm(tdn,anno = NA, header = NA, Probe.Correction.Factor = 'adjust', CodeCount = 'geo.mean', Background = 'none', SampleContent = 'housekeeping.geo.mea',OtherNorm = 'none',CodeCount.summary.target = NA,SampleContent.summary.target = NA,round.values = FALSE,is.log = FALSE,take.log = FALSE,return.matrix.of.endogenous.probes = TRUE)
-#                            traits = NA,
-#                            predict.conc = FALSE,
-#                            verbose = TRUE,
-#                            genes.to.fit,
-#                            genes.to.predict,
-#                            guess.cartridge = TRUE,
-#                            ...
-# ))
-
-
-
-
-write.table(tdn_norm, file=paste(path,"/","TDN_Norm.tsv",sep=""), sep="\t",row.names=TRUE,quote = FALSE,col.names=TRUE)
-
-tdn_norm2 <- NanoStringNorm(tdn, anno = NA, header = NA, Probe.Correction.Factor = 'adjust', CodeCount = 'geo.mean', Background = 'none', SampleContent = 'housekeeping.geo.mean',OtherNorm = 'none',CodeCount.summary.target = NA,SampleContent.summary.target = NA,round.values = FALSE,is.log = FALSE,take.log = FALSE,return.matrix.of.endogenous.probes = FALSE)
-
-Plot.NanoStringNorm(tdn_norm2,label.best.guess = TRUE,label.ids = list(),label.as.legend = TRUE,plot.type='all')
-
-
-Plot.NanoStringNorm(x = tdn_norm2,label.best.guess = FALSE,label.ids = list(genes = rownames(tdn_norm2$gene.summary.stats.norm),
-                                                                            samples = rownames(tdn_norm2$sample.summary.stats)),plot.type = c('norm.factors'))
-
-                    
-                    
-                    
-png('NanoStringNorm_4_Plots_%03d.png', units = 'in', height = 6,width = 6, res = 250, pointsize = 10)
-Plot.NanoStringNorm(x = tdn_norm3,label.best.guess = TRUE,plot.type = c('cv', 'mean.sd', 'RNA.estimates', 'volcano', 'missing','norm.factors', 'positive.controls', 'batch.effects'))
-dev.off()
-
-
-
-png('test_%03d.png', units = 'in', height = 6,width = 6, res = 250, pointsize = 10)
-Plot.NanoStringNorm(x = tdn_norm2,label.best.guess = TRUE,plot.type = c('volcano'))
-dev.off()
-
-
-tdn_norm3 <- NanoStringNorm(tdn, anno = NA, header = NA, Probe.Correction.Factor = 'adjust', CodeCount = 'geo.mean', Background = 'mean.2sd', SampleContent = 'housekeeping.geo.mean',OtherNorm = 'none',CodeCount.summary.target = NA,SampleContent.summary.target = NA,round.values = FALSE,is.log = FALSE,take.log = FALSE,return.matrix.of.endogenous.probes = FALSE)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-##-------------------------------------------------------##
 library(ggrepel)
 library(ggplot2)
+library(data.table)
+library(supclust)
+library(pheatmap)
+library(RColorBrewer)
+library(viridis)
+library(dplyr)
 
 
-tdn <- read.table("C:/Export/Betsy/TDN/G1xG3_indeed.csv", header=TRUE, sep=",")
+tdn <- read.table("C:/Export/Betsy/TDN/PEAK_AUC/G2xG3_peak.csv", header=TRUE, sep=",")
 
-ggplot(data=tdn, aes(x=logFC, y=pvalue)) + geom_point()
-
-p <- ggplot(data=tdn, aes(x=logFC, y=-log10(pvalue))) + geom_point()+ theme_minimal()
+div <- read.table("C:/Export/Betsy/APH/diversity.csv", header=TRUE, sep=",")
 
 
-p2 <- p + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
-  geom_hline(yintercept=-log10(0.05), col="red")
+tdn$gene_name <- row.names(tdn)
 
-tdn$logFC <- tdn$logFC*log10(2)
+tdn <- subset(tdn, !(gene_name %in% div$Gene))
 
 
 tdn$diffexpressed <- "NO"
-tdn$diffexpressed[tdn$logFC > 0.6 & tdn$pvalue < 0.05] <- "UP"
+tdn$diffexpressed[tdn$logFC > 0.5 & tdn$pvalue < 0.05] <- "UP"
 # if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
-tdn$diffexpressed[tdn$logFC < -0.6 & tdn$pvalue < 0.05] <- "DOWN"
+tdn$diffexpressed[tdn$logFC < -0.5 & tdn$pvalue < 0.05] <- "DOWN"
 
 # tdn <- subset(tdn, Gene %in% rownames(query4)) #<------------------------ filter
 ranger <- "NA"
-tdn$ranger[tdn$logFC > -5 & tdn$logFC < 5] <- "select" #<------------------------ filter
+tdn$ranger[tdn$logFC > -7 & tdn$logFC < 7] <- "select" #<------------------------ filter
 tdn <- subset(tdn, ranger == "select")
-
-# 
-# p <- ggplot(data=tdn, aes(x=logFC, y=-log10(pvalue), col=diffexpressed)) + geom_point() + theme_minimal()
-# 
-# p2 <- p + geom_vline(xintercept=c(-1.0, 1,0), col="red") +
-#   geom_hline(yintercept=-log10(0.05), col="red")
-# 
-# p3 <- p2 + scale_color_manual(values=c("blue", "black", "red"))
-
-mycolors <- c("blue", "red", "black")
-names(mycolors) <- c("DOWN", "UP", "NO")
-p3 <- p2 + scale_colour_manual(values = mycolors)
 
 tdn$delabel <- NA
 tdn$delabel[tdn$diffexpressed != "NO"] <- tdn$Gene[tdn$diffexpressed != "NO"]
@@ -137,87 +34,134 @@ tdn$delabel[tdn$diffexpressed != "NO"] <- tdn$Gene[tdn$diffexpressed != "NO"]
 
 tdn$delabel[tdn$diffexpressed != "NO"] 
 
-# ggplot(data=tdn, aes(x=logFC, y=-log10(pvalue), col=diffexpressed, label=delabel)) + 
-#   geom_point() + 
-#   theme_minimal() +
-#   geom_text()
+tdn$adj <- "q-value>=0.10"
+tdn$adj[tdn$qvalue < 0.10] <- "q-value=<0.10"
 
 
 ggplot(data=tdn, aes(x=logFC, y=-log10(pvalue), col=diffexpressed, label=delabel)) +
-  geom_point() + 
+  geom_point(aes(shape = adj), size = 2) + 
   theme_minimal() +
   geom_text_repel() +
   scale_color_manual(values=c("blue", "black", "red")) +
-  geom_vline(xintercept=c(-0.6, 0.6), col="red") +
-  geom_hline(yintercept=-log10(0.05), col="red")
+  geom_vline(xintercept=c(-0.5, 0.5), col="red") +
+  geom_hline(yintercept=-log10(0.05), col="red")+
+  geom_text_repel(aes(label=ifelse(pvalue < 0.05 & abs(logFC) >= 0.5,
+                                   tdn$gene_name, '')))+ggtitle("NanoStringDiff Differential Expression for UPCC35313  High and Non-Responders")
 
 
-###-----------------------------------------------------------------------###
+
+
+qual <- tdn[(tdn$adj == "q-value=<0.10") & (tdn$diffexpressed != "NO"),]
+
+write.table(qual,"C:/Export/Betsy/G1xG3_candidate.tsv", sep="\t",row.names=TRUE,quote = FALSE,col.names=TRUE)
+
+
+diff_gene <- qual$gene_name
+
+q2 <- read.table("C:/Export/Betsy/TDN/PEAK_AUC/Peak_AUC_supclust_G1xG2.tsv", header=TRUE, sep="\t") #<---------- nSolver cols easy 
+
+pheat_list <- c(unique(c(diff_gene,q2$Probe.Name)))
+
+
+###----------------nSolver Normalized---------------------------##
+###----------------______---------------------------##
+
+path <- "C:/Export/Betsy/TDN/PEAK_AUC"
+
+probe <- read.table("C:/Export/Betsy/TDN/20210106_TDN_Normalized.csv", header=TRUE, sep=",") #<---------- nSolver cols easy 
+
+# probe <- subset(probe, !(Probe.Name %in% div$Gene))
+
+
+# colnames(probe)[5:14] <-substr(colnames(probe)[5:14], 30, 32)
+colnames(probe)[2:11] <-substr(colnames(probe)[2:11], 30, 32)
+
+
+
+##Peak_G1xG2-------
+samp_list <- c("202","207","211","201","204","213")
+
+nq2 <- select(probe,c("Probe.Name",samp_list))
+
+nq4 <- select(probe,samp_list)
+
+
+# nq2$SD <- rowSds(as.matrix(nq2[,c(2:8)]))
+
+# q3 <- q2[q2$SD != 0,] ##<----------------- for gene names
+# 
+# q4 <- q3[,c(2:8)]
+
+# q5 <- select(probe2,"202","204","207","211","201","213","216")
+design <- c(0,0,0,1,1,1)
+
+
+
+iris2 <- transpose(nq4)
+
+iris_mat2 <- as.matrix(iris2)
+
+log_iris <- log10(iris_mat2)
+
+fit_p <- pelora(log_iris, design, noc = 2, trace = 1)
+
+fit_n  <- wilma(log_iris, design, noc = 2, trace = 1)
+
+
+nq2[c(531,589,389,78),]
+
+cat <- rbind(pfs_p,pfs_n)
+
+
+write.table(cat, file=paste(path,"/","Peak_AUC_supclust_G1xG3_APH.tsv",sep=""), sep="\t",row.names=TRUE,quote = FALSE,col.names=TRUE)
+
+##-------------new PHEAT ------------------------###
 
 library(pheatmap)
 library(RColorBrewer)
 library(viridis)
 
+probe <- read.table("C:/Export/Betsy/TDN/20210106_TDN_Normalized.csv", header=TRUE, sep=",") #<---------- nSolver cols easy 
 
-probe <- read.table("C:/Export/Betsy/TDN/hope_indeed.csv", header=TRUE, sep=",")
+tdn <- subset(tdn, !(gene_name %in% div$Gene))
 
-cols <- c(1, 14:23)
-probe2 <- probe[,cols]
+pheat_list <- c("MAML3","NOTCH1","NOTCH2","IGF1R","AKT1","AKT2","PIK3C3")
+##-------------###
+# peak_list <- unique(cat$Probe.Name)
 
-
-#DEG list from volcano plot
-DEG <- tdn$Gene[tdn$diffexpressed != "NO"]
-
-
-query <- subset(probe2, Gene %in% DEG)
-
-rownames(query) <- query$Gene
-
-cols2 <- c(2:11)
-
-query2 <- query[,cols2]
-
-query2$tot <- rowSums(query2[,c(1:10)])
-query3 <- subset(query2, tot >= 5)
-
-query3[query3==1]<-1.5
-query3[query3==0]<-1
-
-
-ord <- c(2,3,5,7,1,8,9,4,6,10)
-
-query4 <- query3[,ord]
-
-colnames(query4) <-substr(colnames(query4), 55, 57)
-
-# as.numeric(query3)
+# qual <- tdn[tdn$adj == "q-value=<0.10",]
 # 
-# test <-as.matrix(query3)
+# dif_peak <- unique(qual$gene_name)
 # 
-# 
-# 
-# dat <- data.frame(values = as.numeric(test))
-# ggplot(dat, aes(values)) + geom_density(bw = "SJ")
-# 
-#------------------------------------------------------##
-# col_groups <- substr(colnames(query4), 1, 1)
-# table(col_groups)
-# # Data frame with column annotations.
-# mat_col <- data.frame(group = col_groups)
-# rownames(mat_col) <- colnames(mat)
-# 
-# # List with colors for each annotation.
-# mat_colors <- list(group = brewer.pal(3, "Set1"))
-# names(mat_colors$group) <- unique(col_groups)
+# GOI <- c(as.list(peak_list),as.list(dif_peak))
 
-my_sample_col <- data.frame(Group = rep(c("G1", "G2", "G3"), c(4,3,3)))
-row.names(my_sample_col) <- colnames(query4)
+
+probe2 <- subset(probe, probe$Probe.Name %in% pheat_list)
+
+
+# new_list5<- new_list4[!str_detect(new_list4,pattern="TR.")]
+
+rownames(probe2) <- probe2$Probe.Name
+
+colnames(probe2)[2:11] <-substr(colnames(probe2)[2:11], 30, 32)
+
+
+
+pheat_probe <- select(probe2,"202","207","211","201","204","213","205","209","216","217")
+
+pheat_probe <- select(probe2,"201","204","213","205","209","216","217")
+
+# pheat_probe <- select(probe2,samp_list)
+
+
+my_sample_col <- data.frame(Group = rep(c("G1","G2","G3"), c(3,3,4)))
+row.names(my_sample_col) <- colnames(pheat_probe)
 
 
 #------------------------------------------------------##
 
 pheatmap(
-  mat               = log10(query4),
+  mat               = log10(pheat_probe),
   color             = inferno(20),
   # breaks            = mat_breaks,
   border_color      = NA,
@@ -226,77 +170,82 @@ pheatmap(
   annotation_col    = my_sample_col,
   annotation_colors = NA,
   drop_levels       = TRUE,
-  fontsize          = 14,
+  fontsize          = 8,
   cluster_cols =  FALSE,
-  main              = "UPCC35313 TDN log10 Transformed NanoStringDiff Expression Data"
+  main              = "UPCC35313 TDN log10 Transformed nSolver Normalized Expression Data\n Expression Profile Subset by MAML3-NOTCH-AKT Signaling"
   
 )
 
-###---------------------------------##
-library(dplyr)
-library(data.table)
-library(supclust)
-data(leukemia, package="supclust")
 
-probe <- read.table("C:/Export/Betsy/TDN/hope_indeed.csv", header=TRUE, sep=",")
-
-cols <- c(1, 14:23)
-probe2 <- probe[,cols]
-
-
-# ord <- c(2,3,5,7,1,8,9,4,6,10)
-
-colnames(probe2) <-substr(colnames(probe2), 55, 57)
-
-# probe2 <- probe2[,ord]
-
-q <- select(probe2,"202","204","207","211","205","209","217")
-
-# probes_transpose <- as.data.frame(t(as.matrix(probe2)))
-
-iris <- transpose(q)
-
-iris_mat <- as.matrix(iris)
-
-# colnames(iris) <- c(1:776)
-
-
-design <- c(0,0,0,0,1,1,1)
+write.table(probe2, file=paste(path,"/","pheat_DEG_G1xG3_APH.tsv",sep=""), sep="\t",row.names=TRUE,quote = FALSE,col.names=TRUE)
 
 
 
-fit  <- wilma(iris_mat, design, noc = 2, trace = 1)
+vio <- read.table("C:/Export/Betsy/TDN/PEAK_AUC/violin.csv", header=TRUE, sep=",")
 
-summary(fit)
-plot(fit)
-fitted(fit)
-
-
-##--------------------------------------------------------###
-
-q2 <- select(probe2,"202","204","207","211","201","213","216")
-
-# probes_transpose <- as.data.frame(t(as.matrix(probe2)))
-
-iris2 <- transpose(q2)
-
-iris_mat2 <- as.matrix(iris2)
-
-# colnames(iris) <- c(1:776)
-
-
-design <- c(0,0,0,0,1,1,1)
-
-
-
-fit  <- wilma(iris_mat2, design, noc = 2, trace = 1)
-
-###----------------VIOLIN---------------------------##
-
-vio <- read.table("C:/Export/Betsy/TDN/supclust_vio.csv", header=TRUE, sep=",")
-
-vio_gene <- vio[vio$Gene == "PTGER2",]
+vio_gene <- vio[vio$Gene == "TERT",]
 
 p <- ggplot(vio_gene, aes(x=Group, y=Expr)) + geom_violin()
 
-fin <- p + stat_summary(fun=median, geom="point", size=2, color="red") + geom_boxplot(width=0.1) + ggtitle("PTGER2")
+fin <- p + stat_summary(fun=median, geom="point", size=2, color="red") + geom_boxplot(width=0.1) + ggtitle("TERT")
+
+
+
+
+
+##-----------------PATHway-------------------------------------##
+library(org.Hs.eg.db)
+
+
+gen_path <- read.table("C:/Export/Betsy/APH/G1xG3_peak_APH.csv", header=TRUE, sep=",")
+
+entr <- read.table("C:/Export/Betsy/APH/sym_convert.csv", header=TRUE, sep=",")
+
+entr <- subset(entr, (gene_name %in% pheat_list))
+
+combo <- merge(entr,gen_path, by = "gene_name")
+
+gen_path$gene_name <- row.names(gen_path)
+
+gen_path <- subset(gen_path, (gene_name %in% pheat_list))
+
+## assume that 1st column is ID
+## 2nd column is fold change
+
+## feature 1: numeric vector
+geneList <- combo[,5]
+
+## feature 2: named vector
+names(geneList) <- as.character(combo[,2])
+
+## feature 3: decreasing order
+geneList <- sort(geneList, decreasing = TRUE)
+
+# eg = bitr("TNFRSF17", fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+# 
+# 
+gene <- combo$ENTREZ
+# 
+# gene <-eg = bitr(gene, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+
+
+edo <- enrichDGN(names(geneList))
+
+
+kk <- enrichKEGG(gene         = gene,
+                 organism     = 'hsa',
+                 pvalueCutoff = 0.05)
+
+write.table(head(kk,30), file=paste(path,"/","ENRICH_DEG_G1xG3_APH.csv",sep=""), sep=",",row.names=TRUE,quote = FALSE,col.names=TRUE)
+
+
+
+library("pathview")
+try <- pathview(gene.data  = geneList,
+                     pathway.id = "hsa04060",
+                     species    = "hsa",
+                      limit      = 3)
+
+library(pathview)
+data(gse16873.d)
+pv.out <- pathview(gene.data = gse16873.d[, 1], pathway.id = "04110",species = "hsa", out.suffix = "gse16873")
