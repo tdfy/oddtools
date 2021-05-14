@@ -145,3 +145,28 @@ metadata %>%
 hope2 = paste("comp", ".png", sep="")
 ggsave(hope2,units = c("in"), height = 10, width = 10)
 
+# Filter out low quality cells using selected thresholds - these will change with experiment
+filtered_seurat <- subset(x = P39.big, 
+                         subset= (nUMI >= 500) & 
+                           (nGene >= 250) & 
+                           (log10GenesPerUMI > 0.80) & 
+                           (mitoRatio < 0.20))
+			                          
+# Extract counts
+counts <- GetAssayData(object = filtered_seurat, slot = "counts")
+
+# Output a logical matrix specifying for each gene on whether or not there are more than zero counts per cell
+nonzero <- counts > 0
+
+# Sums all TRUE values and returns TRUE if more than 10 TRUE values per gene
+keep_genes <- Matrix::rowSums(nonzero) >= 10
+
+# Only keeping those genes expressed in more than 10 cells
+filtered_counts <- counts[keep_genes, ]
+
+# Reassign to filtered Seurat object
+filtered_seurat <- CreateSeuratObject(filtered_counts, meta.data = filtered_seurat@meta.data)
+
+
+ # Save filtered subset to new metadata
+ metadata_clean <- filtered_seurat@meta.data
